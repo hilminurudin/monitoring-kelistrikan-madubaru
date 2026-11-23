@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+* {
+  font-family: 'Poppins', sans-serif;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+html.dark .app-shell {
+  color: #f9fafb;
+}
+
+html.dark .app-shell .bg-gray-100 {
+  background-color: #111827;
+}
+
+html.dark .app-shell .bg-white {
+  background-color: #1f2937;
+}
+
+html.dark .app-shell .bg-gray-50 {
+  background-color: #374151;
+}
+
+html.dark .app-shell .border-gray-200 {
+  border-color: #374151;
+}
+
+html.dark .app-shell .text-gray-900 {
+  color: #f9fafb;
+}
+
+html.dark .app-shell .text-gray-800 {
+  color: #e5e7eb;
+}
+
+html.dark .app-shell .text-gray-700 {
+  color: #d1d5db;
+}
+
+html.dark .app-shell .text-gray-600,
+html.dark .app-shell .text-gray-500 {
+  color: #9ca3af;
+}
+
+html.dark .app-shell .text-black {
+  color: #ffffff;
+}
+
+html.dark .app-shell .hover\:bg-gray-100:hover {
+  background-color: #374151;
+}
+
+html.dark .app-shell .divide-gray-200 > :not(:last-child) {
+  border-color: #374151;
+}
