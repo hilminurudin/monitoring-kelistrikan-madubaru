@@ -1,3 +1,4 @@
+
 import {
   BrowserRouter,
   Navigate,
@@ -12,27 +13,6 @@ import Footer from "./component/layout/Footer";
 
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
-import { supabase } from "./lib/supabase";
-
-function SupabaseConfigurationError() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-100 px-6">
-      <section className="w-full max-w-xl rounded-xl border border-red-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-red-700">
-          Konfigurasi Supabase belum lengkap
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-gray-700">
-          Isi nilai <code>VITE_SUPABASE_ANON_KEY</code> dengan anon/publishable
-          key dari Supabase pada file <code>.env.local</code>, lalu restart
-          server Vite.
-        </p>
-        <p className="mt-3 text-sm text-gray-500">
-          Jangan gunakan service role key di aplikasi frontend.
-        </p>
-      </section>
-    </main>
-  );
-}
 
 function ProtectedLayout() {
   const isAuthenticated =
@@ -40,10 +20,6 @@ function ProtectedLayout() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (!supabase) {
-    return <SupabaseConfigurationError />;
   }
 
   return (
@@ -76,12 +52,7 @@ function App() {
         {/* DEFAULT */}
         <Route
           path="/"
-          element={
-            <Navigate
-              to="/dashboard"
-              replace
-            />
-          }
+          element={<Navigate to="/dashboard" replace />}
         />
 
         {/* PROTECTED */}
@@ -95,12 +66,7 @@ function App() {
         {/* FALLBACK */}
         <Route
           path="*"
-          element={
-            <Navigate
-              to="/dashboard"
-              replace
-            />
-          }
+          element={<Navigate to="/dashboard" replace />}
         />
       </Routes>
     </BrowserRouter>
