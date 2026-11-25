@@ -6,21 +6,29 @@ function Header() {
   const navigate = useNavigate();
 
   const [currentTime, setCurrentTime] = useState(new Date());
+
   const [isDarkMode, setIsDarkMode] = useState(() =>
     localStorage.getItem("powermeter-theme") === "dark"
   );
 
+  // ==========================================
+  // DARK MODE
+  // ==========================================
   useEffect(() => {
     document.documentElement.classList.toggle(
       "dark",
       isDarkMode
     );
+
     localStorage.setItem(
       "powermeter-theme",
       isDarkMode ? "dark" : "light"
     );
   }, [isDarkMode]);
 
+  // ==========================================
+  // REAL-TIME CLOCK
+  // ==========================================
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
@@ -29,18 +37,35 @@ function Header() {
     return () => clearInterval(interval);
   }, []);
 
+  // ==========================================
+  // DATE & TIME
+  // ==========================================
+
   const date = currentTime.toLocaleDateString("id-ID", {
+    timeZone: "Asia/Jakarta",
     day: "2-digit",
     month: "long",
     year: "numeric",
   });
 
+  const shortDate = currentTime.toLocaleDateString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
   const time = currentTime.toLocaleTimeString("id-ID", {
+    timeZone: "Asia/Jakarta",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
   });
 
+  // ==========================================
+  // LOGOUT
+  // ==========================================
   const handleLogout = () => {
     localStorage.removeItem("powermeter-authenticated");
     localStorage.removeItem("powermeter-username");
@@ -58,31 +83,89 @@ function Header() {
         top-0
         z-50
         flex
-        h-18
+        h-[72px]
         md:left-60
         md:right-0
         items-center
         border-b border-gray-200
         bg-white
-        px-6 py-3
+        px-3 py-3
+        md:px-6
       "
     >
 
       {/* RIGHT SECTION */}
-      <div className="ml-auto flex items-center gap-4">
+      <div className="ml-auto flex items-center gap-2 md:gap-4">
 
         {/* Date Time & Status */}
-        <div className="hidden text-right lg:block">
+        <div className="text-right">
 
-          <p className="text-xs font-medium text-gray-600">
+          {/* Desktop */}
+          <p
+            className="
+              hidden
+              text-xs
+              font-medium
+              text-gray-600
+              lg:block
+            "
+          >
             {date} • {time}
           </p>
 
-          <div className="mt-1 flex items-center justify-end gap-1.5">
+          {/* Mobile & Tablet */}
+          <div className="lg:hidden">
 
-            <span className="h-2 w-2 rounded-full bg-green-500" />
+            <p
+              className="
+                text-sm
+                font-semibold
+                tabular-nums
+                text-gray-700
+              "
+            >
+              {time}
+            </p>
 
-            <span className="text-[11px] font-medium text-green-600">
+            <p
+              className="
+                text-[10px]
+                text-gray-500
+              "
+            >
+              {shortDate}
+            </p>
+
+          </div>
+
+          {/* Device Status */}
+          <div
+            className="
+              mt-1
+              flex
+              items-center
+              justify-end
+              gap-1.5
+            "
+          >
+
+            <span
+              className="
+                h-2
+                w-2
+                rounded-full
+                bg-green-500
+              "
+            />
+
+            <span
+              className="
+                text-[10px]
+                md:text-[11px]
+                font-medium
+                text-green-600
+              "
+            >
               Device Online
             </span>
 
@@ -93,7 +176,9 @@ function Header() {
         {/* Theme Toggle */}
         <button
           type="button"
-          onClick={() => setIsDarkMode((previous) => !previous)}
+          onClick={() =>
+            setIsDarkMode((previous) => !previous)
+          }
           aria-label={
             isDarkMode
               ? "Aktifkan mode terang"
@@ -127,12 +212,14 @@ function Header() {
         <button
           type="button"
           onClick={handleLogout}
+          aria-label="Keluar"
+          title="Keluar"
           className="
             flex h-10 items-center
             justify-center gap-2
             rounded-lg
             border border-red-200
-            px-4
+            px-3 sm:px-4
             text-sm font-medium
             text-red-500
             transition
@@ -148,7 +235,7 @@ function Header() {
             strokeWidth={1.8}
           />
 
-          <span>
+          <span className="hidden sm:inline">
             Keluar
           </span>
 
