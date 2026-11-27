@@ -95,10 +95,10 @@ function Header() {
     >
 
       {/* RIGHT SECTION */}
-      <div className="ml-auto flex items-center gap-2 md:gap-4">
+      <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto md:gap-4">
 
         {/* Date Time & Status */}
-        <div className="text-right">
+        <div className="mr-auto text-left md:mr-0 md:text-right">
 
           {/* Desktop */}
           <p
@@ -144,8 +144,9 @@ function Header() {
               mt-1
               flex
               items-center
-              justify-end
+              justify-start
               gap-1.5
+              md:justify-end
             "
           >
 
