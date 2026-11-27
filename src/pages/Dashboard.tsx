@@ -64,7 +64,25 @@ const POWER_SOURCES: Array<{
 ];
 
 // Set VITE_API_BASE_URL pada .env frontend (Vite), tanpa suffix /api/power.
-const API_BASE_URL = "";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const HISTORY_RESET_KEY = "madubaru-history-reset-v1";
+
+const readHistoryResetTimes = (): Partial<Record<PowerSource, string>> => {
+  try {
+    const value = JSON.parse(localStorage.getItem(HISTORY_RESET_KEY) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      POWER_SOURCES.flatMap(({ key }) => {
+        const timestamp = value[key];
+        return typeof timestamp === "string" && Number.isFinite(Date.parse(timestamp))
+          ? [[key, timestamp]]
+          : [];
+      })
+    ) as Partial<Record<PowerSource, string>>;
+  } catch {
+    return {};
+  }
+};
 
 const toNumber = (value: number | string | null | undefined): number => {
   if (value === null || value === undefined || value === "") return 0;
@@ -141,30 +159,37 @@ function Dashboard() {
     });
   const [loggerHistory, setLoggerHistory] =
     useState<PowerMeterData[]>([]);
+  const [historyResetTimes, setHistoryResetTimes] = useState(readHistoryResetTimes);
+  const [resetHistorySource, setResetHistorySource] = useState<PowerSource | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [alarmHistory, setAlarmHistory] =
     useState<AlarmEvent[]>(readAlarmHistory);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const previousAlarmState = useRef<Record<number, boolean>>({});
 
-  const handleResetAlarmHistory = () => {
-    if (!window.confirm("Hapus seluruh histori alarm?")) {
-      return;
-    }
+const [showResetAlarmModal, setShowResetAlarmModal] = useState(false);
 
+  const handleResetAlarmHistory = () => {
+    setShowResetAlarmModal(true);
+  };
+
+  const confirmResetAlarmHistory = () => {
     clearAlarmHistory();
     setAlarmHistory([]);
+    setShowResetAlarmModal(false);
   };
 
   const handleResetLoggerHistory = () => {
-    if (!window.confirm("Hapus seluruh data logger?")) {
-      return;
-    }
-
-    setLoggerHistory([]);
+    if (!resetHistorySource) return;
+    const next = { ...historyResetTimes, [resetHistorySource]: new Date().toISOString() };
+    localStorage.setItem(HISTORY_RESET_KEY, JSON.stringify(next));
+    setHistoryResetTimes(next);
+    setResetHistorySource(null);
   };
 
 
-  // Histori: satu polling setiap 10 detik (tanpa useEffect duplikat).
+  // Histori sudah direkap oleh Telegraf; polling API cukup sekali per menit.
   useEffect(() => {
     let mounted = true;
     let busy = false;
@@ -172,7 +197,7 @@ function Dashboard() {
       if (busy) return;
       busy = true;
       try {
-        const data = unwrapData(await fetchApi("/api/power/history?limit=500"));
+        const data = unwrapData(await fetchApi("/api/power/history?days=30"));
         const items = Array.isArray(data)
           ? data
           : data && typeof data === "object" && Array.isArray((data as { records?: unknown[] }).records)
@@ -183,15 +208,20 @@ function Dashboard() {
           const source = sourceFromItem(item);
           return source ? [mapApiMeter(item, source.genId)] : [];
         });
-        if (mounted) setLoggerHistory(history);
+        if (mounted) {
+          setLoggerHistory(history);
+          setHistoryError(null);
+        }
       } catch (error) {
         console.error("Gagal mengambil histori:", error);
+        if (mounted) setHistoryError(error instanceof Error ? error.message : "Gagal mengambil histori.");
       } finally {
         busy = false;
+        if (mounted) setHistoryLoading(false);
       }
     };
     void loadHistory();
-    const interval = window.setInterval(() => void loadHistory(), 10000);
+    const interval = window.setInterval(() => void loadHistory(), 60000);
     return () => { mounted = false; window.clearInterval(interval); };
   }, []);
 
@@ -357,6 +387,7 @@ function Dashboard() {
 
   const formatAlarmDate = (timestamp: string) =>
     new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Jakarta",
       day: "2-digit",
       month: "long",
       year: "numeric",
@@ -365,8 +396,13 @@ function Dashboard() {
       second: "2-digit",
     }).format(new Date(timestamp));
 
-  const northLoggerHistory = loggerHistory.filter((meter) => meter.gen_id === 1);
-  const southLoggerHistory = loggerHistory.filter((meter) => meter.gen_id === 2);
+  const getSourceLoggerHistory = (source: typeof POWER_SOURCES[number]) => {
+    const cutoff = historyResetTimes[source.key];
+    return loggerHistory.filter((meter) =>
+      meter.gen_id === source.genId &&
+      (!cutoff || new Date(meter.timestamp).getTime() > new Date(cutoff).getTime())
+    );
+  };
 
   const exportLoggerHistory = (
     history: PowerMeterData[],
@@ -607,185 +643,128 @@ function Dashboard() {
           ))}
         </div>
       </section>
-
       {/* =========================
-          HISTORI
+          HISTORI - LIMA SUMBER
       ========================== */}
-      <section
-        id="histori"
-        className="scroll-mt-[95px] p-4 sm:p-6"
-      >
+      <section id="histori" className="scroll-mt-[95px] p-4 sm:p-6">
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 sm:text-2xl">
-            Histori Data
-          </h2>
-
-          <p className="mt-1 text-sm text-gray-500">
-            Data parameter kelistrikan direkam setiap 1 jam.
-          </p>
+          <h2 className="text-xl font-semibold text-gray-900 sm:text-2xl">Histori Data</h2>
+          <p className="mt-1 text-sm text-gray-500">Data parameter kelistrikan direkap setiap 1 jam.</p>
+          {historyError && <p role="alert" className="mt-2 text-sm text-red-600">Gagal mengambil histori: {historyError}</p>}
         </div>
-
-        <div
-          className="
-            rounded-xl
-            border border-gray-200
-            bg-white
-            p-5
-            shadow-sm
-          "
-        >
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-gray-900">
-              PLN Utara
-            </h3>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  exportLoggerHistory(northLoggerHistory, "pln-utara")
-                }
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+        <div className="space-y-6">
+          {POWER_SOURCES.map((source) => {
+            const rows = getSourceLoggerHistory(source);
+            return (
+              <div key={source.key} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-semibold text-gray-900">{source.name}</h3>
+                    {source.genId >= 3 && !meters[source.key] && rows.length === 0 && (
+                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">Belum aktif</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={rows.length === 0}
+                      onClick={() => exportLoggerHistory(rows, source.key)}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Export CSV
+                    </button>
+                    <button
+                      type="button"
+                      disabled={rows.length === 0}
+                      onClick={() => setResetHistorySource(source.key)}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="hide-scrollbar max-h-[480px] overflow-auto rounded-lg border border-gray-200">
+                  <table className="min-w-[750px] w-full text-sm">
+                    <thead className="sticky top-0 z-10 bg-gray-50 text-gray-600">
+                      <tr>
+                        {["Waktu", "Tegangan", "Arus", "kW", "E Del", "Faktor Daya", "Frekuensi"].map((header) => (
+                          <th key={header} className="px-4 py-3 text-left font-medium">{header}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {rows.map((meter) => (
+                        <tr key={`${source.key}-${meter.timestamp}`} className="text-gray-700">
+                          <td className="whitespace-nowrap px-4 py-3">{formatAlarmDate(meter.timestamp)}</td>
+                          <td className="px-4 py-3">{formatValue(meter.voltage, 2)} V</td>
+                          <td className="px-4 py-3">{formatValue(meter.current, 2)} A</td>
+                          <td className="px-4 py-3">{formatValue(meter.power, 3)} kW</td>
+                          <td className="px-4 py-3">{formatValue(meter.mwh, 3)} MWh</td>
+                          <td className="px-4 py-3">{formatValue(meter.pf, 3)}</td>
+                          <td className="px-4 py-3">{formatValue(meter.freq, 2)} Hz</td>
+                        </tr>
+                      ))}
+                      {rows.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
+                            {historyLoading ? "Memuat histori..." : source.genId >= 3 ? "Belum ada data histori generator." : "Belum ada data histori."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3 text-xs text-gray-500">Total: {rows.length} data</p>
+              </div>
+            );
+          })}
+        </div>
+        {resetHistorySource && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reset-history-title"
+              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            >
+              <h3
+                id="reset-history-title"
+                className="text-lg font-semibold text-gray-900"
               >
-                Export CSV
-              </button>
-              <button type="button" onClick={handleResetLoggerHistory} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">
-                Reset
-              </button>
+                Reset Histori Data?
+              </h3>
+
+              <p className="mt-3 text-sm leading-6 text-gray-600">
+                Apakah kamu yakin ingin mereset histori{" "}
+                <strong>
+                  {POWER_SOURCES.find(
+                    ({ key }) => key === resetHistorySource
+                  )?.name}
+                </strong>
+                ?
+              </p>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setResetHistorySource(null)}
+                  className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition-colors duration-200 hover:bg-gray-100"
+                >
+                  Tidak
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetLoggerHistory}
+                  className="rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-red-700"
+                >
+                  Ya, Reset
+                </button>
+              </div>
             </div>
           </div>
-
-          <div className="hide-scrollbar max-h-[480px] overflow-auto rounded-lg border border-gray-200">
-            <table className="min-w-[750px] w-full text-sm">
-
-              <thead className="sticky top-0 z-10 bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">
-                    Waktu
-                  </th>
-
-                  <th className="px-4 py-3 text-left font-medium">
-                    Tegangan
-                  </th>
-
-                  <th className="px-4 py-3 text-left font-medium">
-                    Arus
-                  </th>
-
-                  <th className="px-4 py-3 text-left font-medium">
-                    kW
-                  </th>
-
-                  <th className="px-4 py-3 text-left font-medium">
-                    E Del
-                  </th>
-
-                  <th className="px-4 py-3 text-left font-medium">
-                    Faktor Daya
-                  </th>
-
-                  <th className="px-4 py-3 text-left font-medium">
-                    Frekuensi
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-gray-200">
-                {northLoggerHistory.map((meter) => (
-                  <tr key={`${meter.id}-${meter.timestamp}`} className="text-gray-700">
-                    <td className="px-4 py-3">{formatAlarmDate(meter.timestamp)}</td>
-                    <td className="px-4 py-3">{formatValue(meter.voltage, 2)} V</td>
-                    <td className="px-4 py-3">{formatValue(meter.current, 2)} A</td>
-                    <td className="px-4 py-3">{formatValue(meter.power, 3)} kW</td>
-                    <td className="px-4 py-3">{formatValue(meter.mwh, 3)} MWh</td>
-                    <td className="px-4 py-3">{formatValue(meter.pf, 3)}</td>
-                    <td className="px-4 py-3">{formatValue(meter.freq, 2)} Hz</td>
-                  </tr>
-                ))}
-                {northLoggerHistory.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-gray-500" colSpan={7}>
-                      Belum ada data logger.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-
-            </table>
-          </div>
-        </div>
-
-        <div
-          className="
-            mt-6
-            rounded-xl
-            border border-gray-200
-            bg-white
-            p-5
-            shadow-sm
-          "
-        >
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-gray-900">
-              PLN Selatan
-            </h3>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  exportLoggerHistory(southLoggerHistory, "pln-selatan")
-                }
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-              >
-                Export CSV
-              </button>
-              <button type="button" onClick={handleResetLoggerHistory} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700">
-                Reset
-              </button>
-            </div>
-          </div>
-
-          <div className="hide-scrollbar max-h-[480px] overflow-auto rounded-lg border border-gray-200">
-            <table className="min-w-[750px] w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">Waktu</th>
-                  <th className="px-4 py-3 text-left font-medium">Tegangan</th>
-                  <th className="px-4 py-3 text-left font-medium">Arus</th>
-                  <th className="px-4 py-3 text-left font-medium">kW</th>
-                  <th className="px-4 py-3 text-left font-medium">E Del</th>
-                  <th className="px-4 py-3 text-left font-medium">Faktor Daya</th>
-                  <th className="px-4 py-3 text-left font-medium">Frekuensi</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-gray-200">
-                {southLoggerHistory.map((meter) => (
-                  <tr key={`${meter.id}-${meter.timestamp}`} className="text-gray-700">
-                    <td className="px-4 py-3">{formatAlarmDate(meter.timestamp)}</td>
-                    <td className="px-4 py-3">{formatValue(meter.voltage, 2)} V</td>
-                    <td className="px-4 py-3">{formatValue(meter.current, 2)} A</td>
-                    <td className="px-4 py-3">{formatValue(meter.power, 3)} kW</td>
-                    <td className="px-4 py-3">{formatValue(meter.mwh, 3)} MWh</td>
-                    <td className="px-4 py-3">{formatValue(meter.pf, 3)}</td>
-                    <td className="px-4 py-3">{formatValue(meter.freq, 2)} Hz</td>
-                  </tr>
-                ))}
-                {southLoggerHistory.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-gray-500" colSpan={7}>
-                      Belum ada data logger.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
+        )}
       </section>
-
       <section
         id="alarm-history"
         className="scroll-mt-[95px] p-4 sm:p-6"
@@ -879,7 +858,45 @@ function Dashboard() {
           </div>
         </div>
       </section>
+        {showResetAlarmModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reset-alarm-title"
+              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            >
+              <h3
+                id="reset-alarm-title"
+                className="text-lg font-semibold text-gray-900"
+              >
+                Reset Histori Alarm?
+              </h3>
 
+              <p className="mt-3 text-sm leading-6 text-gray-600">
+                Apakah kamu yakin ingin menghapus seluruh histori alarm?
+              </p>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowResetAlarmModal(false)}
+                  className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition-colors duration-200 hover:bg-gray-100"
+                >
+                  Tidak
+                </button>
+
+                <button
+                  type="button"
+                  onClick={confirmResetAlarmHistory}
+                  className="rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-red-700"
+                >
+                  Ya, Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
