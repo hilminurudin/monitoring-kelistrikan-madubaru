@@ -621,7 +621,7 @@ function Dashboard() {
           </h2>
 
           <p className="mt-1 text-sm text-gray-500">
-            Data parameter kelistrikan direkam setiap 10 detik.
+            Data parameter kelistrikan direkam setiap 1 jam.
           </p>
         </div>
 
